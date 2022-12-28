@@ -148,10 +148,40 @@ def unet_model(output_channels: int):
 
     return tf.keras.Model(inputs=inputs, outputs=x)
 
+def create_unet_model(input_shape, num_classes):
+    # Input layer
+    inputs = tf.keras.layers.Input(shape=input_shape)
+
+    # Downsampling path
+    x = inputs
+    skip_connections = []
+    for i in range(5):
+        filters = 2**(8+i)
+        x = tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same", activation="relu")(x)
+        x = tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same", activation="relu")(x)
+        skip_connections.append(x)
+        x = tf.keras.layers.MaxPooling2D(pool_size=2)(x)
+
+    # Upsampling path
+    for i in range(5):
+        filters = 2**(7-i)
+        x = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=2, strides=2, padding="same")(x)
+        x = tf.keras.layers.concatenate([x, skip_connections.pop()])
+        x = tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same", activation="relu")(x)
+        x = tf.keras.layers.Conv2D(filters=filters, kernel_size=3, padding="same", activation="relu")(x)
+
+    # Output Layer
+    outputs = tf.keras.layers.Conv2D(num_classes, 1, activation="softmax")(x)
+
+    # Create the model
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
+    return model
 
 OUTPUT_CLASSES = 2
 
 model = unet_model(output_channels=OUTPUT_CLASSES)
+#model = create_unet_model(input_shape=(512,512,3), num_classes=OUTPUT_CLASSES)
 
 model.compile(
     optimizer="adam",
@@ -193,16 +223,21 @@ def show_predictions(dataset=None, num=1):
 class DisplayCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         clear_output(wait=True)
-        show_predictions()
+        # show_predictions()
         print("\nSample Prediction after epoch {}\n".format(epoch + 1))
 
 
-EPOCHS = 200
+EPOCHS = 1000
 VAL_SUBSPLITS = 5
 VALIDATION_STEPS = info.splits["test"].num_examples // BATCH_SIZE // VAL_SUBSPLITS
 
+image = tf.reshape(image, shape=[1, image.shape[0], image.shape[1], image.shape[2]])
+labels = tf.reshape(labels, shape=[1, labels.shape[0], labels.shape[1], labels.shape[2]])
+
 model_history = model.fit(
     train_batches,
+    #image,
+    #labels,
     epochs=EPOCHS,
     steps_per_epoch=STEPS_PER_EPOCH,
     validation_steps=VALIDATION_STEPS,
